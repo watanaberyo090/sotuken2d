@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>駅乗降者数の表示</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        #year-selector {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        /* ラベルのCSS調整 */
+        .station-label {
+            font-size: 12px;
+            text-align: center;
+            line-height: 1.4; /* 行間を調整 */
+            white-space: nowrap; /* 改行を防止 */
+            padding: 2px;
+        }
+
+        .station-label span {
+            display: block; /* spanをブロック要素にし、個別に改行されるようにする */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="year-selector">
+        <label for="year">年度を選択:</label>
+        <select id="year"></select>
+    </div>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // マップの初期化
+        const map = L.map('map').setView([35.6895, 139.6917], 10); // 東京付近
+        map.preferCanvas = true;
+        // タイルレイヤー追加
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // GeoJSONデータをロード
+        fetch('S12-23_NumberOfPassengers.geojson')
+            .then(response => response.json())
+            .then(data => {
+                const yearSelector = document.getElementById('year');
+                const maxYear = getMaxYear(data.features[0].properties); // 最大年度を取得
+                const startYear = 2011; // 初年度
+
+                // 年度選択オプションを作成
+                for (let year = startYear; year <= maxYear; year++) {
+                    const option = document.createElement('option');
+                    option.value = year;
+                    option.textContent = `${year}年`;
+                    yearSelector.appendChild(option);
+                }
+
+                // 初期年度でマーカーを描画
+                renderMarkers(data, startYear);
+
+                // 年度選択時のイベントリスナー
+                yearSelector.addEventListener('change', () => {
+                    const selectedYear = parseInt(yearSelector.value, 10);
+                    renderMarkers(data, selectedYear);
+                });
+            })
+            .catch(error => console.error('Error loading GeoJSON:', error));
+
+        // 最大年度を取得する関数
+        function getMaxYear(properties) {
+            let maxIndex = 0;
+            for (const key in properties) {
+                const match = key.match(/^S12_(\d+)$/);
+                if (match) {
+                    maxIndex = Math.max(maxIndex, parseInt(match[1], 10));
+                }
+            }
+            return 2011 + Math.floor((maxIndex - 6) / 4);
+        }
+
+        // LineString の中心座標を計算する関数
+        function getLineStringCenter(coords) {
+            let totalLat = 0, totalLng = 0;
+            coords.forEach(coord => {
+                totalLat += coord[1];
+                totalLng += coord[0];
+            });
+            const centerLat = totalLat / coords.length;
+            const centerLng = totalLng / coords.length;
+            return L.latLng(centerLat, centerLng);
+        }
+
+        // マーカーとラベルを管理する変数をグローバルに定義
+let layerGroup = L.layerGroup(); // マーカーのグループ
+let labelMarkers = []; // ラベル用のマーカー
+
+// 指定した年度のマーカーを描画
+function renderMarkers(geojsonData, year) {
+    // 以前のマーカーとラベルを削除
+    layerGroup.clearLayers();
+    labelMarkers.forEach(marker => marker.removeFrom(map));
+    labelMarkers = [];
+
+    const offset = (year - 2011) * 4;
+    const year006 = `S12_${String(6 + offset).padStart(3, '0')}`;
+    const year007 = `S12_${String(7 + offset).padStart(3, '0')}`;
+    console.log('Using keys:', year006, year007);
+
+    geojsonData.features.forEach(feature => {
+        const year006Value = feature.properties[year006];
+        const year007Value = feature.properties[year007];
+
+        if (year006Value === 1 && year007Value === 1) {
+            let latlng;
+
+            if (feature.geometry.type === "LineString") {
+                const coords = feature.geometry.coordinates;
+                latlng = getLineStringCenter(coords);
+            } else if (feature.geometry.type === "Point") {
+                const coords = feature.geometry.coordinates;
+                latlng = L.latLng(coords[1], coords[0]);
+            }
+
+            if (!latlng) {
+                console.warn('Invalid geometry type:', feature.geometry.type);
+                return;
+            }
+
+            const passengers = feature.properties[`S12_${String(9 + offset).padStart(3, '0')}`];
+            if (passengers === undefined) {
+                console.warn('Passengers data not found:', feature);
+                return;
+            }
+
+            // 面積を元に半径を計算
+            const area = passengers * 0.01; 
+            const radius = Math.sqrt(area / Math.PI); // 面積から半径を計算
+           
+            const circle =L.circleMarker(latlng, {
+                radius: radius, // 地図上でメートル単位の半径
+                color: 'blue',
+                weight: 0.5,   // 枠線の太さを調整
+                fillColor: 'cyan',
+                fillOpacity: 0.5
+            });
+
+            const label = L.divIcon({
+                className: 'station-label',
+                html: `${feature.properties.S12_001}駅<br>
+                <span>${feature.properties.S12_003}</span><br>
+                ${passengers}人`,
+            });
+
+            const labelMarker = L.marker(latlng, { icon: label });
+            labelMarkers.push(labelMarker);
+
+            layerGroup.addLayer(circle);
+        }
+    });
+
+    map.on('zoom', function () {
+        if (map.getZoom() >= 14) {
+            labelMarkers.forEach(marker => marker.addTo(map));
+        } else {
+            labelMarkers.forEach(marker => marker.removeFrom(map));
+        }
+    });
+
+    // レイヤーをマップに追加
+    layerGroup.addTo(map);
+}
+
+
+    </script>
+</body>
+</html>
