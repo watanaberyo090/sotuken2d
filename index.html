@@ -28,23 +28,27 @@
             padding: 10px;
             border-radius: 5px;
         }
+
         /* ラベルのCSS調整 */
         .station-label {
             font-size: 12px;
             text-align: center;
-            line-height: 1.4; /* 行間を調整 */
-            white-space: nowrap; /* 改行を防止 */
+            line-height: 1.4;
+            /* 行間を調整 */
+            white-space: nowrap;
+            /* 改行を防止 */
             padding: 2px;
         }
 
         .station-label span {
-            display: block; /* spanをブロック要素にし、個別に改行されるようにする */
+            display: block;
+            /* spanをブロック要素にし、個別に改行されるようにする */
         }
     </style>
 </head>
 
 <body>
-    <div id="year-selector">
+    <div id="year-selector" style="margin-left: 30px;">
         <label for="year">年度を選択:</label>
         <select id="year"></select>
     </div>
@@ -112,86 +116,87 @@
         }
 
         // マーカーとラベルを管理する変数をグローバルに定義
-let layerGroup = L.layerGroup(); // マーカーのグループ
-let labelMarkers = []; // ラベル用のマーカー
+        let layerGroup = L.layerGroup(); // マーカーのグループ
+        let labelMarkers = []; // ラベル用のマーカー
 
-// 指定した年度のマーカーを描画
-function renderMarkers(geojsonData, year) {
-    // 以前のマーカーとラベルを削除
-    layerGroup.clearLayers();
-    labelMarkers.forEach(marker => marker.removeFrom(map));
-    labelMarkers = [];
+        // 指定した年度のマーカーを描画
+        function renderMarkers(geojsonData, year) {
+            // 以前のマーカーとラベルを削除
+            layerGroup.clearLayers();
+            labelMarkers.forEach(marker => marker.removeFrom(map));
+            labelMarkers = [];
 
-    const offset = (year - 2011) * 4;
-    const year006 = `S12_${String(6 + offset).padStart(3, '0')}`;
-    const year007 = `S12_${String(7 + offset).padStart(3, '0')}`;
-    console.log('Using keys:', year006, year007);
+            const offset = (year - 2011) * 4;
+            const year006 = `S12_${String(6 + offset).padStart(3, '0')}`;
+            const year007 = `S12_${String(7 + offset).padStart(3, '0')}`;
+            console.log('Using keys:', year006, year007);
 
-    geojsonData.features.forEach(feature => {
-        const year006Value = feature.properties[year006];
-        const year007Value = feature.properties[year007];
+            geojsonData.features.forEach(feature => {
+                const year006Value = feature.properties[year006];
+                const year007Value = feature.properties[year007];
 
-        if (year006Value === 1 && year007Value === 1) {
-            let latlng;
+                if (year006Value === 1 && year007Value === 1) {
+                    let latlng;
 
-            if (feature.geometry.type === "LineString") {
-                const coords = feature.geometry.coordinates;
-                latlng = getLineStringCenter(coords);
-            } else if (feature.geometry.type === "Point") {
-                const coords = feature.geometry.coordinates;
-                latlng = L.latLng(coords[1], coords[0]);
-            }
+                    if (feature.geometry.type === "LineString") {
+                        const coords = feature.geometry.coordinates;
+                        latlng = getLineStringCenter(coords);
+                    } else if (feature.geometry.type === "Point") {
+                        const coords = feature.geometry.coordinates;
+                        latlng = L.latLng(coords[1], coords[0]);
+                    }
 
-            if (!latlng) {
-                console.warn('Invalid geometry type:', feature.geometry.type);
-                return;
-            }
+                    if (!latlng) {
+                        console.warn('Invalid geometry type:', feature.geometry.type);
+                        return;
+                    }
 
-            const passengers = feature.properties[`S12_${String(9 + offset).padStart(3, '0')}`];
-            if (passengers === undefined) {
-                console.warn('Passengers data not found:', feature);
-                return;
-            }
+                    const passengers = feature.properties[`S12_${String(9 + offset).padStart(3, '0')}`];
+                    if (passengers === undefined) {
+                        console.warn('Passengers data not found:', feature);
+                        return;
+                    }
 
-            // 面積を元に半径を計算
-            const area = passengers * 0.01; 
-            const radius = Math.sqrt(area / Math.PI); // 面積から半径を計算
-           
-            const circle =L.circleMarker(latlng, {
-                radius: radius, // 地図上でメートル単位の半径
-                color: 'blue',
-                weight: 0.5,   // 枠線の太さを調整
-                fillColor: 'cyan',
-                fillOpacity: 0.5
-            });
+                    // 面積を元に半径を計算
+                    const area = passengers * 0.01;
+                    const radius = Math.sqrt(area / Math.PI); // 面積から半径を計算
 
-            const label = L.divIcon({
-                className: 'station-label',
-                html: `${feature.properties.S12_001}駅<br>
+                    const circle = L.circleMarker(latlng, {
+                        radius: radius, // 地図上でメートル単位の半径
+                        color: 'blue',
+                        weight: 0.5,   // 枠線の太さを調整
+                        fillColor: 'cyan',
+                        fillOpacity: 0.5
+                    });
+
+                    const label = L.divIcon({
+                        className: 'station-label',
+                        html: `${feature.properties.S12_001}駅<br>
                 <span>${feature.properties.S12_003}</span><br>
                 ${passengers}人`,
+                    });
+
+                    const labelMarker = L.marker(latlng, { icon: label });
+                    labelMarkers.push(labelMarker);
+
+                    layerGroup.addLayer(circle);
+                }
             });
 
-            const labelMarker = L.marker(latlng, { icon: label });
-            labelMarkers.push(labelMarker);
+            map.on('zoom', function () {
+                if (map.getZoom() >= 14) {
+                    labelMarkers.forEach(marker => marker.addTo(map));
+                } else {
+                    labelMarkers.forEach(marker => marker.removeFrom(map));
+                }
+            });
 
-            layerGroup.addLayer(circle);
+            // レイヤーをマップに追加
+            layerGroup.addTo(map);
         }
-    });
-
-    map.on('zoom', function () {
-        if (map.getZoom() >= 14) {
-            labelMarkers.forEach(marker => marker.addTo(map));
-        } else {
-            labelMarkers.forEach(marker => marker.removeFrom(map));
-        }
-    });
-
-    // レイヤーをマップに追加
-    layerGroup.addTo(map);
-}
 
 
     </script>
 </body>
+
 </html>
