@@ -119,6 +119,19 @@
         let layerGroup = L.layerGroup(); // マーカーのグループ
         let labelMarkers = []; // ラベル用のマーカー
 
+        // ラベルの表示を制御する関数
+        function updateLabelsVisibility() {
+            const bounds = map.getBounds(); // 地図の表示範囲を取得
+            const zoomLevel = map.getZoom(); // 現在のズームレベルを取得
+            labelMarkers.forEach(marker => {
+                if (zoomLevel >= 15 && bounds.contains(marker.getLatLng())) {
+                    marker.addTo(map); // 範囲内なら表示
+                } else {
+                    marker.removeFrom(map); // 範囲外なら非表示
+                }
+            });
+        }
+
         // 指定した年度のマーカーを描画
         function renderMarkers(geojsonData, year) {
             // 以前のマーカーとラベルを削除
@@ -157,14 +170,13 @@
                         return;
                     }
 
-                    // 面積を元に半径を計算
                     const area = passengers * 0.01;
-                    const radius = Math.sqrt(area / Math.PI); // 面積から半径を計算
+                    const radius = Math.sqrt(area / Math.PI);
 
                     const circle = L.circleMarker(latlng, {
-                        radius: radius, // 地図上でメートル単位の半径
+                        radius: radius,
                         color: 'blue',
-                        weight: 0.5,   // 枠線の太さを調整
+                        weight: 0.5,
                         fillColor: 'cyan',
                         fillOpacity: 0.5
                     });
@@ -183,13 +195,12 @@
                 }
             });
 
-            map.on('zoom', function () {
-                if (map.getZoom() >= 14) {
-                    labelMarkers.forEach(marker => marker.addTo(map));
-                } else {
-                    labelMarkers.forEach(marker => marker.removeFrom(map));
-                }
-            });
+            // ラベルの表示を初期化
+            updateLabelsVisibility();
+
+            // ズームや移動時にラベルの表示を更新
+            map.on('zoomend', updateLabelsVisibility);
+            map.on('moveend', updateLabelsVisibility);
 
             // レイヤーをマップに追加
             layerGroup.addTo(map);
